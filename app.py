@@ -68,14 +68,17 @@ def add_repair(job_no, name, phone, brand, model, issue, parts, status, repair_d
 
 def get_all_repairs():
     conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query("SELECT * FROM repairs", conn)
-    conn.close()
+    try:
+        df = pd.read_sql_query("SELECT * FROM repairs", conn)
+    except Exception as e:
+        df = pd.DataFrame()
+    finally:
+        conn.close()
     
-    # 📌 จัดเรียงด้วย Pandas: แปลง ID เป็นตัวเลข แล้วเรียงจากใหม่สุดไปเก่าสุด (Descending)
-    if not df.empty:
-        if 'id' in df.columns:
-            df['id'] = pd.to_numeric(df['id'], errors='coerce')
-            df = df.sort_values(by='id', ascending=False)
+    # 📌 จัดเรียงข้อมูลตาม ID จากมากไปน้อย (ถ้ามี id)
+    if not df.empty and 'id' in df.columns:
+        df['id'] = pd.to_numeric(df['id'], errors='coerce')
+        df = df.sort_values(by='id', ascending=False)
             
     return df
 
@@ -102,13 +105,16 @@ def add_part(part_code, part_name, po_no, brand, quantity, price, receive_date):
 
 def get_all_parts():
     conn = sqlite3.connect(PARTS_DB_PATH)
-    df = pd.read_sql_query("SELECT * FROM parts_stock", conn)
-    conn.close()
+    try:
+        df = pd.read_sql_query("SELECT * FROM parts_stock", conn)
+    except Exception as e:
+        df = pd.DataFrame()
+    finally:
+        conn.close()
     
-    if not df.empty:
-        if 'id' in df.columns:
-            df['id'] = pd.to_numeric(df['id'], errors='coerce')
-            df = df.sort_values(by='id', ascending=False)
+    if not df.empty and 'id' in df.columns:
+        df['id'] = pd.to_numeric(df['id'], errors='coerce')
+        df = df.sort_values(by='id', ascending=False)
             
     return df
 
@@ -289,7 +295,7 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # =======================================================
-# 🔍 1. เมนูค้นหาและจัดการข้อมูลใบงาน (เรียงใหม่สุด -> เก่าสุด)
+# 🔍 1. เมนูค้นหาและจัดการข้อมูลใบงาน (ปรับปรุงการดึงข้อมูลแบบยืดหยุ่น)
 # =======================================================
 if st.session_state.active_menu == "จัดการใบงาน":
     st.markdown("🔍 **เมนูค้นหาและจัดการข้อมูลใบงาน**")
@@ -302,21 +308,41 @@ if st.session_state.active_menu == "จัดการใบงาน":
             
             # 📌 กรองตามคำค้นหา
             if search_query:
-                filtered_df = filtered_df[
-                    filtered_df['job_no'].astype(str).str.contains(search_query, case=False, na=False) |
-                    filtered_df['customer_name'].astype(str).str.contains(search_query, case=False, na=False)
-                ]
+                # แปลงทุกคอลัมน์เป็นข้อความเพื่อค้นหาได้ยืดหยุ่นที่สุด
+                mask = False
+                for col in filtered_df.columns:
+                    mask = mask | filtered_df[col].astype(str).str.contains(search_query, case=False, na=False)
+                filtered_df = filtered_df[mask]
             
-            display_df = filtered_df[["repair_date", "job_no", "customer_name", "phone_number", "brand", "model", "issue", "parts_used", "status"]].copy()
-            display_df.columns = ["วันที่รับซ่อม", "Job No.", "ชื่อลูกค้า", "เบอร์โทร", "แบรนด์", "รุ่นสินค้า", "อาการเสีย", "อะไหล่ที่ใช้", "สถานะการซ่อม"]
+            # 📌 กำหนดคอลัมน์ที่จะแสดงผลแบบยืดหยุ่น (Safe Column Mapping)
+            column_mapping = {
+                "repair_date": "วันที่รับซ่อม",
+                "job_no": "Job No.",
+                "customer_name": "ชื่อลูกค้า",
+                "phone_number": "เบอร์โทร",
+                "brand": "แบรนด์",
+                "model": "รุ่นสินค้า",
+                "issue": "อาการเสีย",
+                "parts_used": "อะไหล่ที่ใช้",
+                "status": "สถานะการซ่อม"
+            }
             
-            # 📌 ระบบแบ่งหน้า (Pagination) 10 รายการ/หน้า
+            # เลือกเฉพาะคอลัมน์ที่มีอยู่จริงใน DataFrame เพื่อป้องกัน Error
+            available_cols = [c for c in column_mapping.keys() if c in filtered_df.columns]
+            
+            if available_cols:
+                display_df = filtered_df[available_cols].copy()
+                display_df = display_df.rename(columns=column_mapping)
+            else:
+                display_df = filtered_df.copy() # ถ้าชื่อไม่ตรงเลย ให้แสดงทั้งหมดตามที่มี
+
+            # 📌 ระบบแบ่งหน้า (Pagination)
             rows_per_page = 10
             total_rows = len(display_df)
             total_pages = math.ceil(total_rows / rows_per_page) if total_rows > 0 else 1
             
             if st.session_state.current_page > total_pages:
-                st.session_state.current_page = total_pages
+                st.session_state.current_page = max(1, total_pages)
                 
             start_idx = (st.session_state.current_page - 1) * rows_per_page
             end_idx = start_idx + rows_per_page
@@ -329,15 +355,17 @@ if st.session_state.active_menu == "จัดการใบงาน":
                 use_container_width=True
             )
 
-            p_col1, p_col2, p_col3 = st.columns([4, 2, 4])
-            with p_col2:
-                page_selection = st.selectbox(
-                    "หน้าการแสดงผล", options=list(range(1, total_pages + 1)), 
-                    index=st.session_state.current_page - 1, label_visibility="collapsed"
-                )
-                if page_selection != st.session_state.current_page:
-                    st.session_state.current_page = page_selection
-                    st.rerun()
+            if total_pages > 1:
+                p_col1, p_col2, p_col3 = st.columns([4, 2, 4])
+                with p_col2:
+                    page_selection = st.selectbox(
+                        "หน้าการแสดงผล", options=list(range(1, total_pages + 1)), 
+                        index=min(st.session_state.current_page - 1, total_pages - 1), 
+                        label_visibility="collapsed"
+                    )
+                    if page_selection != st.session_state.current_page:
+                        st.session_state.current_page = page_selection
+                        st.rerun()
         else:
             st.info("ℹ️ ยังไม่มีรายการใบงานเก็บรักษาในระบบ")
 
@@ -481,9 +509,9 @@ elif st.session_state.active_menu == "รับเข้าอะไหล่":
         filtered_parts = df_parts.copy()
         if part_search:
             filtered_parts = filtered_parts[
-                filtered_parts['part_code'].str.contains(part_search, case=False, na=False) |
-                filtered_parts['part_name'].str.contains(part_search, case=False, na=False) |
-                filtered_parts['po_no'].str.contains(part_search, case=False, na=False)
+                filtered_parts['part_code'].astype(str).str.contains(part_search, case=False, na=False) |
+                filtered_parts['part_name'].astype(str).str.contains(part_search, case=False, na=False) |
+                filtered_parts['po_no'].astype(str).str.contains(part_search, case=False, na=False)
             ]
             
         unique_pos = filtered_parts['po_no'].unique()
@@ -493,10 +521,12 @@ elif st.session_state.active_menu == "รับเข้าอะไหล่":
         else:
             for po in unique_pos:
                 po_disp = po if (po and str(po).strip() != "") else "ไม่ระบุ PO"
-                po_group = filtered_parts[filtered_parts['po_no'] == po].sort_values(by="id", ascending=True).copy()
+                po_group = filtered_parts[filtered_parts['po_no'] == po].copy()
+                if 'id' in po_group.columns:
+                    po_group = po_group.sort_values(by="id", ascending=True)
                 
                 total_items = len(po_group)
-                total_qty = po_group['quantity'].sum()
+                total_qty = po_group['quantity'].sum() if 'quantity' in po_group.columns else 0
                 rec_date = po_group['receive_date'].iloc[0] if 'receive_date' in po_group.columns and not po_group['receive_date'].empty else "-"
                 
                 with st.expander(f"📄 **เลขที่ PO: {po_disp}** | วันที่รับเข้า: {rec_date} | จำนวน: {total_items} รายการ ({total_qty} ชิ้น)"):
@@ -545,26 +575,38 @@ elif st.session_state.active_menu == "รับเข้าอะไหล่":
                     st.markdown("---")
                     
                     po_group["ลำดับที่"] = range(1, len(po_group) + 1)
-                    sub_df = po_group[["ลำดับที่", "part_code", "part_name", "brand", "quantity", "id"]].copy()
-                    sub_df_display = sub_df[["ลำดับที่", "part_code", "part_name", "brand", "quantity"]].copy()
-                    sub_df_display.columns = ["ลำดับที่", "รหัสอะไหล่", "ชื่อรายการอะไหล่", "แบรนด์สินค้า", "จำนวนชิ้น"]
+                    p_cols = ["ลำดับที่", "part_code", "part_name", "brand", "quantity", "id"]
+                    avail_p_cols = [c for c in p_cols if c in po_group.columns]
+                    
+                    sub_df = po_group[avail_p_cols].copy()
+                    
+                    disp_cols_map = {
+                        "ลำดับที่": "ลำดับที่",
+                        "part_code": "รหัสอะไหล่",
+                        "part_name": "ชื่อรายการอะไหล่",
+                        "brand": "แบรนด์สินค้า",
+                        "quantity": "จำนวนชิ้น"
+                    }
+                    disp_p_cols = [c for c in disp_cols_map.keys() if c in sub_df.columns]
+                    sub_df_display = sub_df[disp_p_cols].rename(columns=disp_cols_map)
                     
                     st.dataframe(sub_df_display, hide_index=True, use_container_width=True)
                     
-                    d_c1, d_c2 = st.columns([3, 7])
-                    with d_c1:
-                        del_seq = st.number_input(f"ระบุ ลำดับที่ ที่ต้องการลบชิ้นเดียว (ใน PO: {po_disp})", min_value=1, max_value=len(po_group), step=1, key=f"del_seq_{po}")
-                    with d_c2:
-                        st.markdown("<div style='margin-top:24px;'></div>", unsafe_allow_html=True)
-                        if st.button("🗑️ ลบอะไหล่ชิ้นนี้", key=f"btn_del_{po}"):
-                            target_row = sub_df[sub_df["ลำดับที่"] == del_seq]
-                            if not target_row.empty:
-                                real_id = int(target_row["id"].values[0])
-                                delete_part(real_id)
-                                st.success(f"ลบรายการอะไหล่ ลำดับที่ {del_seq} สำเร็จ!")
-                                st.rerun()
-                            else:
-                                st.error("⚠️ ไม่พบระบุลำดับที่ดังกล่าว")
+                    if "id" in sub_df.columns:
+                        d_c1, d_c2 = st.columns([3, 7])
+                        with d_c1:
+                            del_seq = st.number_input(f"ระบุ ลำดับที่ ที่ต้องการลบชิ้นเดียว (ใน PO: {po_disp})", min_value=1, max_value=len(po_group), step=1, key=f"del_seq_{po}")
+                        with d_c2:
+                            st.markdown("<div style='margin-top:24px;'></div>", unsafe_allow_html=True)
+                            if st.button("🗑️ ลบอะไหล่ชิ้นนี้", key=f"btn_del_{po}"):
+                                target_row = sub_df[sub_df["ลำดับที่"] == del_seq]
+                                if not target_row.empty:
+                                    real_id = int(target_row["id"].values[0])
+                                    delete_part(real_id)
+                                    st.success(f"ลบรายการอะไหล่ ลำดับที่ {del_seq} สำเร็จ!")
+                                    st.rerun()
+                                else:
+                                    st.error("⚠️ ไม่พบระบุลำดับที่ดังกล่าว")
     else:
         st.info("ℹ️ ยังไม่มีรายการอะไหล่ที่จัดเก็บในคลังข้อมูล")
 
@@ -575,13 +617,17 @@ elif st.session_state.active_menu == "สถิติการซ่อม":
     st.markdown("📊 **เมนู แสดงสถิติ การซ่อม**")
     if not df_repairs.empty:
         total_jobs = len(df_repairs)
-        inf_c = len(df_repairs[df_repairs['brand'] == 'Infinix'])
-        tec_c = len(df_repairs[df_repairs['brand'] == 'Tecno'])
-        ite_c = len(df_repairs[df_repairs['brand'] == 'Itel'])
         
-        done_c = len(df_repairs[df_repairs['status'].str.contains("เสร็จสิ้น", na=False)])
-        pending_c = len(df_repairs[df_repairs['status'].str.contains("ดำเนินการ|รับเครื่อง", na=False)])
-        cancel_c = len(df_repairs[df_repairs['status'].str.contains("ยกเลิก", na=False)])
+        inf_c = len(df_repairs[df_repairs['brand'] == 'Infinix']) if 'brand' in df_repairs.columns else 0
+        tec_c = len(df_repairs[df_repairs['brand'] == 'Tecno']) if 'brand' in df_repairs.columns else 0
+        ite_c = len(df_repairs[df_repairs['brand'] == 'Itel']) if 'brand' in df_repairs.columns else 0
+        
+        if 'status' in df_repairs.columns:
+            done_c = len(df_repairs[df_repairs['status'].astype(str).str.contains("เสร็จสิ้น", na=False)])
+            pending_c = len(df_repairs[df_repairs['status'].astype(str).str.contains("ดำเนินการ|รับเครื่อง", na=False)])
+            cancel_c = len(df_repairs[df_repairs['status'].astype(str).str.contains("ยกเลิก", na=False)])
+        else:
+            done_c, pending_c, cancel_c = 0, 0, 0
 
         st.markdown("### 📈 ปริมาณงานแยกตามแบรนด์สินค้า")
         m_c1, m_c2, m_c3, m_c4 = st.columns(4)
@@ -606,8 +652,6 @@ elif st.session_state.active_menu == "ส่งออก Excel":
     st.markdown("📥 **เมนู Export to Excel**")
     if not df_repairs.empty:
         export_df = df_repairs.copy()
-        export_df = export_df[["id", "job_no", "customer_name", "phone_number", "brand", "model", "issue", "parts_used", "status", "repair_date", "date_added"]]
-        export_df.columns = ["ID", "เลขที่ใบงาน", "ชื่อลูกค้า", "เบอร์โทรศัพท์", "แบรนด์", "รุ่น/โมเดล", "อาการเสีย", "อะไหล่ที่ใช้", "สถานะการซ่อม", "วันที่รับซ่อม", "วันที่บันทึกระบบ"]
         
         buffer = io.BytesIO()
         try:
@@ -633,10 +677,7 @@ elif st.session_state.active_menu == "ส่งออก Excel":
 elif st.session_state.active_menu == "ส่งออก PDF":
     st.markdown("📄 **เมนู Export to PDF**")
     if not df_repairs.empty:
-        pdf_df = df_repairs.copy()[["repair_date", "job_no", "customer_name", "brand", "model", "status"]]
-        pdf_df.columns = ["วันที่รับซ่อม", "เลขใบงาน", "ชื่อลูกค้า", "แบรนด์", "รุ่นสินค้า", "สถานะปัจจุบัน"]
-        
-        st.dataframe(pdf_df, hide_index=True, height=450)
+        st.dataframe(df_repairs, hide_index=True, height=450)
         st.markdown("---")
         st.markdown("### 🖨️ จัดการและพิมพ์เอกสารรายงาน")
         
