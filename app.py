@@ -106,20 +106,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =======================================================
-# 2. ฟังก์ชันดึงข้อมูล Google Sheets (ใส่ Link ของคุณให้แล้ว)
+# 2. ฟังก์ชันดึงข้อมูล Google Sheets (ใส่ Link ของคุณ)
 # =======================================================
 @st.cache_data(ttl=5)
 def load_data_from_gsheets():
-    # URL แปลงเป็น CSV อัตโนมัติจาก Link ที่ส่งมา
     sheet_url = "https://docs.google.com/spreadsheets/d/1laqAl0kHMP19qJCqhzAq6Ll7MkpDAQxH3k-xEvG0bj8/export?format=csv&gid=0"
-    
     try:
         df = pd.read_csv(sheet_url)
         if not df.empty:
             return df
     except Exception as e:
         st.warning(f"⚠️ ไม่สามารถเชื่อมต่อ Google Sheets ได้ชั่วคราว: {e}")
-    
     return pd.DataFrame()
 
 # Header หน้าตาหลัก
@@ -172,15 +169,52 @@ with st.sidebar:
 df_repairs = load_data_from_gsheets()
 
 # =======================================================
-# 🔍 1. เมนูค้นหาและจัดการข้อมูลใบงาน
+# 📝 1. เมนู บันทึกข้อมูลเครื่องซ่อมเสร็จ
 # =======================================================
-if st.session_state.active_menu == "จัดการใบงาน":
+if st.session_state.active_menu == "บันทึกข้อมูล":
+    st.markdown("📝 **บันทึกข้อมูลเครื่องซ่อมเสร็จ**")
+    with st.form("repair_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            job_no = st.text_input("เลขที่ใบรับซ่อม (Job No.)")
+            customer_name = st.text_input("ชื่อลูกค้า")
+            brand = st.selectbox("ยี่ห้อ", ["Infinix", "Tecno", "Itel", "อื่นๆ"])
+        with col2:
+            model = st.text_input("รุ่น (Model)")
+            serial_no = st.text_input("Serial Number / IMEI")
+            status = st.selectbox("สถานะการซ่อม", ["ซ่อมเสร็จแล้ว", "รออะไหล่", "กำลังดำเนินการ", "ยกเลิกการซ่อม"])
+        
+        details = st.text_area("รายละเอียดอาการ/การแก้ไข")
+        submitted = st.form_submit_button("💾 บันทึกข้อมูล")
+        if submitted:
+            st.success("✅ บันทึกข้อมูลเรียบร้อยแล้ว (ตัวอย่างการทำงาน)")
+
+# =======================================================
+# 📦 2. เมนู รับเข้าอะไหล่ (Stock Parts)
+# =======================================================
+elif st.session_state.active_menu == "รับเข้าอะไหล่":
+    st.markdown("📦 **ระบบจัดการสต็อกและรับเข้าอะไหล่**")
+    with st.form("stock_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            part_no = st.text_input("รหัสอะไหล่ (Part No.)")
+            part_name = st.text_input("ชื่อรายการอะไหล่")
+        with col2:
+            qty = st.number_input("จำนวนที่รับเข้า", min_value=1, value=1)
+            unit_price = st.number_input("ราคาต่อหน่วย (บาท)", min_value=0.0, value=0.0)
+            
+        submitted_stock = st.form_submit_button("📦 บันทึกรับเข้าอะไหล่")
+        if submitted_stock:
+            st.success("✅ บันทึกรับเข้าอะไหล่เรียบร้อยแล้ว")
+
+# =======================================================
+# 🔍 3. เมนู ค้นหาและจัดการข้อมูลใบงาน
+# =======================================================
+elif st.session_state.active_menu == "จัดการใบงาน":
     st.markdown("🔍 **เมนูค้นหาและจัดการข้อมูลใบงาน**")
     
     if not df_repairs.empty:
-        # 📌 สลับเอาแถวล่างสุด (รายการล่าสุด) ขึ้นมาก่อน
         display_df = df_repairs.iloc[::-1].reset_index(drop=True)
-        
         search_query = st.text_input("📋 พิมพ์ข้อมูลค้นหา", placeholder="พิมพ์เพื่อค้นหา Job No. หรือ ชื่อลูกค้า...").strip()
         
         if search_query:
@@ -198,7 +232,7 @@ if st.session_state.active_menu == "จัดการใบงาน":
         st.warning("ℹ️ กำลังโหลดข้อมูล หรือกรุณาเปิดสิทธิ์ชีตให้เป็น 'ทุกคนที่มีลิงก์อ่านได้' (Anyone with the link)")
 
 # =======================================================
-# 📊 2. เมนู สถิติการซ่อม
+# 📊 4. เมนู สถิติการซ่อม
 # =======================================================
 elif st.session_state.active_menu == "สถิติการซ่อม":
     st.markdown("📊 **เมนู แสดงสถิติ การซ่อม**")
@@ -209,7 +243,7 @@ elif st.session_state.active_menu == "สถิติการซ่อม":
         st.info("ℹ️ ยังไม่มีข้อมูลสำหรับแสดงสถิติ")
 
 # =======================================================
-# 📥 3. เมนู Export Excel
+# 📥 5. เมนู Export Excel
 # =======================================================
 elif st.session_state.active_menu == "ส่งออก Excel":
     st.markdown("📥 **เมนู Export to Excel**")
@@ -227,7 +261,7 @@ elif st.session_state.active_menu == "ส่งออก Excel":
         st.info("ℹ️ ยังไม่มีข้อมูลสำหรับส่งออก")
 
 # =======================================================
-# 📄 4. เมนู Export PDF
+# 📄 6. เมนู Export PDF
 # =======================================================
 elif st.session_state.active_menu == "ส่งออก PDF":
     st.markdown("📄 **เมนู Export to PDF**")
