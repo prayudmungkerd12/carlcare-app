@@ -1,5 +1,4 @@
 import io
-import math
 from datetime import datetime
 import pandas as pd
 import sqlite3
@@ -70,12 +69,12 @@ def get_all_repairs():
     conn = sqlite3.connect(DB_PATH)
     try:
         df = pd.read_sql_query("SELECT * FROM repairs", conn)
-    except Exception as e:
+    except Exception:
         df = pd.DataFrame()
     finally:
         conn.close()
     
-    # 📌 จัดเรียงข้อมูลตาม ID จากมากไปน้อย (ถ้ามี id)
+    # 📌 จัดเรียงข้อมูลตาม ID จากมากไปน้อย (ใหม่สุดไปเก่าสุด)
     if not df.empty and 'id' in df.columns:
         df['id'] = pd.to_numeric(df['id'], errors='coerce')
         df = df.sort_values(by='id', ascending=False)
@@ -107,7 +106,7 @@ def get_all_parts():
     conn = sqlite3.connect(PARTS_DB_PATH)
     try:
         df = pd.read_sql_query("SELECT * FROM parts_stock", conn)
-    except Exception as e:
+    except Exception:
         df = pd.DataFrame()
     finally:
         conn.close()
@@ -153,13 +152,9 @@ st.set_page_config(
 init_db()
 init_parts_db()
 
-if "current_page" not in st.session_state: st.session_state.current_page = 1
 if "active_menu" not in st.session_state: st.session_state.active_menu = "จัดการใบงาน"
 if "current_po" not in st.session_state: st.session_state.current_po = "THGDN"
 if "current_po_date" not in st.session_state: st.session_state.current_po_date = datetime.now().strftime("%Y-%m-%d")
-
-df_repairs = get_all_repairs()
-df_parts = get_all_parts()
 
 # Custom CSS
 st.markdown("""
@@ -295,79 +290,51 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # =======================================================
-# 🔍 1. เมนูค้นหาและจัดการข้อมูลใบงาน (ปรับปรุงการดึงข้อมูลแบบยืดหยุ่น)
+# 🔍 1. เมนูค้นหาและจัดการข้อมูลใบงาน
 # =======================================================
 if st.session_state.active_menu == "จัดการใบงาน":
     st.markdown("🔍 **เมนูค้นหาและจัดการข้อมูลใบงาน**")
     
-    with st.container():
+    # ดึงข้อมูลสดใหม่ทันทีที่เปิดหน้านี้
+    df_repairs = get_all_repairs()
+    
+    if not df_repairs.empty:
         search_query = st.text_input("📋 พิมพ์ข้อมูลค้นหา", placeholder="พิมพ์เพื่อค้นหา Job No. หรือ ชื่อลูกค้า...").strip()
         
-        if not df_repairs.empty:
-            filtered_df = df_repairs.copy()
-            
-            # 📌 กรองตามคำค้นหา
-            if search_query:
-                # แปลงทุกคอลัมน์เป็นข้อความเพื่อค้นหาได้ยืดหยุ่นที่สุด
-                mask = False
-                for col in filtered_df.columns:
-                    mask = mask | filtered_df[col].astype(str).str.contains(search_query, case=False, na=False)
-                filtered_df = filtered_df[mask]
-            
-            # 📌 กำหนดคอลัมน์ที่จะแสดงผลแบบยืดหยุ่น (Safe Column Mapping)
-            column_mapping = {
-                "repair_date": "วันที่รับซ่อม",
-                "job_no": "Job No.",
-                "customer_name": "ชื่อลูกค้า",
-                "phone_number": "เบอร์โทร",
-                "brand": "แบรนด์",
-                "model": "รุ่นสินค้า",
-                "issue": "อาการเสีย",
-                "parts_used": "อะไหล่ที่ใช้",
-                "status": "สถานะการซ่อม"
-            }
-            
-            # เลือกเฉพาะคอลัมน์ที่มีอยู่จริงใน DataFrame เพื่อป้องกัน Error
-            available_cols = [c for c in column_mapping.keys() if c in filtered_df.columns]
-            
-            if available_cols:
-                display_df = filtered_df[available_cols].copy()
-                display_df = display_df.rename(columns=column_mapping)
-            else:
-                display_df = filtered_df.copy() # ถ้าชื่อไม่ตรงเลย ให้แสดงทั้งหมดตามที่มี
-
-            # 📌 ระบบแบ่งหน้า (Pagination)
-            rows_per_page = 10
-            total_rows = len(display_df)
-            total_pages = math.ceil(total_rows / rows_per_page) if total_rows > 0 else 1
-            
-            if st.session_state.current_page > total_pages:
-                st.session_state.current_page = max(1, total_pages)
-                
-            start_idx = (st.session_state.current_page - 1) * rows_per_page
-            end_idx = start_idx + rows_per_page
-            page_df = display_df.iloc[start_idx:end_idx].copy()
-            
-            st.dataframe(
-                page_df,
-                hide_index=True,
-                height=385,
-                use_container_width=True
-            )
-
-            if total_pages > 1:
-                p_col1, p_col2, p_col3 = st.columns([4, 2, 4])
-                with p_col2:
-                    page_selection = st.selectbox(
-                        "หน้าการแสดงผล", options=list(range(1, total_pages + 1)), 
-                        index=min(st.session_state.current_page - 1, total_pages - 1), 
-                        label_visibility="collapsed"
-                    )
-                    if page_selection != st.session_state.current_page:
-                        st.session_state.current_page = page_selection
-                        st.rerun()
-        else:
-            st.info("ℹ️ ยังไม่มีรายการใบงานเก็บรักษาในระบบ")
+        filtered_df = df_repairs.copy()
+        
+        if search_query:
+            # ค้นหาครอบคลุมทุกคอลัมน์
+            mask = False
+            for col in filtered_df.columns:
+                mask = mask | filtered_df[col].astype(str).str.contains(search_query, case=False, na=False)
+            filtered_df = filtered_df[mask]
+        
+        cols_to_show = ["repair_date", "job_no", "customer_name", "phone_number", "brand", "model", "issue", "parts_used", "status"]
+        existing_cols = [c for c in cols_to_show if c in filtered_df.columns]
+        
+        display_df = filtered_df[existing_cols].copy()
+        
+        rename_map = {
+            "repair_date": "วันที่รับซ่อม",
+            "job_no": "Job No.",
+            "customer_name": "ชื่อลูกค้า",
+            "phone_number": "เบอร์โทร",
+            "brand": "แบรนด์",
+            "model": "รุ่นสินค้า",
+            "issue": "อาการเสีย",
+            "parts_used": "อะไหล่ที่ใช้",
+            "status": "สถานะการซ่อม"
+        }
+        display_df = display_df.rename(columns=rename_map)
+        
+        st.dataframe(
+            display_df,
+            hide_index=True,
+            use_container_width=True
+        )
+    else:
+        st.info("ℹ️ ยังไม่มีรายการใบงานเก็บรักษาในระบบ")
 
 # =======================================================
 # 📝 2. เมนูบันทึกข้อมูลเครื่องซ่อมเสร็จ
@@ -427,6 +394,7 @@ elif st.session_state.active_menu == "บันทึกข้อมูล":
 # =======================================================
 elif st.session_state.active_menu == "รับเข้าอะไหล่":
     st.markdown("📦 **เมนูรับเข้าอะไหล่**")
+    df_parts = get_all_parts()
     
     col_po, col_item = st.columns([1, 2])
     
@@ -615,6 +583,8 @@ elif st.session_state.active_menu == "รับเข้าอะไหล่":
 # =======================================================
 elif st.session_state.active_menu == "สถิติการซ่อม":
     st.markdown("📊 **เมนู แสดงสถิติ การซ่อม**")
+    df_repairs = get_all_repairs()
+    
     if not df_repairs.empty:
         total_jobs = len(df_repairs)
         
@@ -650,6 +620,8 @@ elif st.session_state.active_menu == "สถิติการซ่อม":
 # =======================================================
 elif st.session_state.active_menu == "ส่งออก Excel":
     st.markdown("📥 **เมนู Export to Excel**")
+    df_repairs = get_all_repairs()
+    
     if not df_repairs.empty:
         export_df = df_repairs.copy()
         
@@ -676,6 +648,8 @@ elif st.session_state.active_menu == "ส่งออก Excel":
 # =======================================================
 elif st.session_state.active_menu == "ส่งออก PDF":
     st.markdown("📄 **เมนู Export to PDF**")
+    df_repairs = get_all_repairs()
+    
     if not df_repairs.empty:
         st.dataframe(df_repairs, hide_index=True, height=450)
         st.markdown("---")
