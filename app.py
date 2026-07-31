@@ -74,7 +74,6 @@ def get_all_repairs():
     finally:
         conn.close()
     
-    # 📌 จัดเรียงข้อมูลตาม ID จากมากไปน้อย (ใหม่สุดไปเก่าสุด)
     if not df.empty and 'id' in df.columns:
         df['id'] = pd.to_numeric(df['id'], errors='coerce')
         df = df.sort_values(by='id', ascending=False)
@@ -289,14 +288,14 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
 
+# โหลดข้อมูลใบงานทั้งหมด
+df_repairs = get_all_repairs()
+
 # =======================================================
-# 🔍 1. เมนูค้นหาและจัดการข้อมูลใบงาน
+# 🔍 1. เมนูค้นหาและจัดการข้อมูลใบงาน (เวอร์ชันดั้งเดิม)
 # =======================================================
 if st.session_state.active_menu == "จัดการใบงาน":
     st.markdown("🔍 **เมนูค้นหาและจัดการข้อมูลใบงาน**")
-    
-    # ดึงข้อมูลสดใหม่ทันทีที่เปิดหน้านี้
-    df_repairs = get_all_repairs()
     
     if not df_repairs.empty:
         search_query = st.text_input("📋 พิมพ์ข้อมูลค้นหา", placeholder="พิมพ์เพื่อค้นหา Job No. หรือ ชื่อลูกค้า...").strip()
@@ -304,7 +303,6 @@ if st.session_state.active_menu == "จัดการใบงาน":
         filtered_df = df_repairs.copy()
         
         if search_query:
-            # ค้นหาครอบคลุมทุกคอลัมน์
             mask = False
             for col in filtered_df.columns:
                 mask = mask | filtered_df[col].astype(str).str.contains(search_query, case=False, na=False)
@@ -583,7 +581,6 @@ elif st.session_state.active_menu == "รับเข้าอะไหล่":
 # =======================================================
 elif st.session_state.active_menu == "สถิติการซ่อม":
     st.markdown("📊 **เมนู แสดงสถิติ การซ่อม**")
-    df_repairs = get_all_repairs()
     
     if not df_repairs.empty:
         total_jobs = len(df_repairs)
@@ -620,7 +617,6 @@ elif st.session_state.active_menu == "สถิติการซ่อม":
 # =======================================================
 elif st.session_state.active_menu == "ส่งออก Excel":
     st.markdown("📥 **เมนู Export to Excel**")
-    df_repairs = get_all_repairs()
     
     if not df_repairs.empty:
         export_df = df_repairs.copy()
@@ -648,7 +644,6 @@ elif st.session_state.active_menu == "ส่งออก Excel":
 # =======================================================
 elif st.session_state.active_menu == "ส่งออก PDF":
     st.markdown("📄 **เมนู Export to PDF**")
-    df_repairs = get_all_repairs()
     
     if not df_repairs.empty:
         st.dataframe(df_repairs, hide_index=True, height=450)
