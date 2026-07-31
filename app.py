@@ -68,9 +68,15 @@ def add_repair(job_no, name, phone, brand, model, issue, parts, status, repair_d
 
 def get_all_repairs():
     conn = sqlite3.connect(DB_PATH)
-    # 📌 ปรับเปลี่ยนตรงนี้: ORDER BY id DESC เพื่อดึงข้อมูลใหม่สุดขึ้นก่อนเสมอ
-    df = pd.read_sql_query("SELECT * FROM repairs ORDER BY id DESC", conn)
+    df = pd.read_sql_query("SELECT * FROM repairs", conn)
     conn.close()
+    
+    # 📌 จัดเรียงด้วย Pandas: แปลง ID เป็นตัวเลข แล้วเรียงจากใหม่สุดไปเก่าสุด (Descending)
+    if not df.empty:
+        if 'id' in df.columns:
+            df['id'] = pd.to_numeric(df['id'], errors='coerce')
+            df = df.sort_values(by='id', ascending=False)
+            
     return df
 
 def is_job_duplicate_on_insert(job_no):
@@ -96,8 +102,14 @@ def add_part(part_code, part_name, po_no, brand, quantity, price, receive_date):
 
 def get_all_parts():
     conn = sqlite3.connect(PARTS_DB_PATH)
-    df = pd.read_sql_query("SELECT * FROM parts_stock ORDER BY id DESC", conn)
+    df = pd.read_sql_query("SELECT * FROM parts_stock", conn)
     conn.close()
+    
+    if not df.empty:
+        if 'id' in df.columns:
+            df['id'] = pd.to_numeric(df['id'], errors='coerce')
+            df = df.sort_values(by='id', ascending=False)
+            
     return df
 
 def delete_part(row_id):
