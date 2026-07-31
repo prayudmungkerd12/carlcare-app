@@ -1,11 +1,20 @@
 import io
-import math
 from datetime import datetime
 import pandas as pd
+import requests
 import streamlit as st
 
 # =======================================================
-# 1. การตั้งค่าหน้าจอและ CSS สไตล์แม่แบบ
+# 📌 ตั้งค่า Google Sheets & Webhook สำหรับบันทึกข้อมูล
+# =======================================================
+# 1. URL สำหรับดึงข้อมูลอ่านสด
+SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1laqAl0kHMP19qJCqhzAq6Ll7MkpDAQxH3k-xEvG0bj8/export?format=csv&gid=0"
+
+# 2. URL สำหรับรับค่าบันทึกข้อมูล (เปลี่ยนเป็น URL Webhook หรือ Google Form ของคุณ)
+SAVE_WEBHOOK_URL = "https://script.google.com/macros/s/YOUR_APPS_SCRIPT_ID/exec"
+
+# =======================================================
+# 1. การตั้งค่าหน้าจอและ CSS สไตล์
 # =======================================================
 st.set_page_config(
     page_title="Carlcare ITcity",
@@ -14,7 +23,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
 st.markdown("""
     <style>
     html, body, [data-testid="stAppViewContainer"], [data-testid="stMainBlockContainer"] { background-color: #F8FAFC !important; }
@@ -73,7 +81,7 @@ st.markdown("""
     .compact-header h3 { color: #0369A1 !important; margin: 0 !important; font-weight: 700; font-size: 1.25rem !important; }
     .compact-header p { color: #0EA5E9 !important; margin: 0 !important; font-weight: 600; font-size: 0.85rem; }
     
-    div[data-testid="stForm"], .list-filter-card, .edit-box {
+    div[data-testid="stForm"], .list-filter-card {
         background-color: #FFFFFF !important; border: 1px solid #E2E8F0 !important;
         border-radius: 10px !important; padding: 1.2rem 1.5rem !important; margin-bottom: 1rem !important;
     }
@@ -95,24 +103,16 @@ st.markdown("""
     }
     label p { color: #475569 !important; font-size: 0.85rem !important; font-weight: 600; margin-bottom: 4px !important; }
     h3, p, span, h4 { color: #334155 !important; }
-    
-    .po-status-box {
-        background-color: #F0FDF4; border: 1px solid #BBF7D0; padding: 10px 15px; border-radius: 6px; color: #166534; font-weight: 500; font-size: 0.9rem; margin-bottom: 15px;
-    }
-    .po-edit-card {
-        background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px;
-    }
     </style>
 """, unsafe_allow_html=True)
 
 # =======================================================
-# 2. ฟังก์ชันดึงข้อมูล Google Sheets (URL ของคุณ)
+# 2. ฟังก์ชันดึงข้อมูลจาก Google Sheets
 # =======================================================
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=3)
 def load_data_from_gsheets():
-    sheet_url = "https://docs.google.com/spreadsheets/d/1laqAl0kHMP19qJCqhzAq6Ll7MkpDAQxH3k-xEvG0bj8/export?format=csv&gid=0"
     try:
-        df = pd.read_csv(sheet_url)
+        df = pd.read_csv(SHEET_CSV_URL)
         if not df.empty:
             return df
     except Exception as e:
@@ -128,9 +128,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Session State Initial
-if "active_menu" not in st.session_state: st.session_state.active_menu = "บันทึกข้อมูล"
-if "current_po" not in st.session_state: st.session_state.current_po = "THGDN"
-if "current_po_date" not in st.session_state: st.session_state.current_po_date = datetime.now().strftime("%Y-%m-%d")
+if "active_menu" not in st.session_state: 
+    st.session_state.active_menu = "บันทึกข้อมูล"
 
 # Sidebar Menu
 with st.sidebar:
@@ -171,7 +170,7 @@ with st.sidebar:
 df_repairs = load_data_from_gsheets()
 
 # =======================================================
-# 💻 1. เมนูบันทึกข้อมูลเครื่องซ่อมเสร็จ (ปรับ UI ตามรูปแบบที่คุณต้องการ)
+# 💻 1. เมนูบันทึกข้อมูลเครื่องซ่อมเสร็จ
 # =======================================================
 if st.session_state.active_menu == "บันทึกข้อมูล":
     st.markdown("📝 **เมนูบันทึกข้อมูลเครื่องซ่อมเสร็จ (เพิ่มข้อมูลใบงานใหม่)**")
@@ -212,9 +211,32 @@ if st.session_state.active_menu == "บันทึกข้อมูล":
         st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
         submit_button = st.form_submit_button(label='💾 บันทึกข้อมูลงานซ่อม', use_container_width=True)
 
+    # 📌 ส่วนประมวลผลการส่งข้อมูลบันทึก
     if submit_button:
         if job_no and customer_name and model and issue:
-            st.success("🎉 บันทึกข้อมูลใบงานใหม่สำเร็จเรียบร้อยแล้ว!")
+            data_payload = {
+                "job_no": job_no,
+                "repair_date": repair_date_str,
+                "customer_name": customer_name,
+                "phone_number": phone_number,
+                "brand": brand,
+                "model": model,
+                "issue": issue,
+                "parts_used": parts_used,
+                "status": clean_status
+            }
+            
+            try:
+                # ส่งข้อมูลผ่าน Webhook/Apps Script
+                response = requests.post(SAVE_WEBHOOK_URL, json=data_payload, timeout=10)
+                
+                if response.status_code == 200:
+                    st.success("🎉 บันทึกข้อมูลลง Google Sheets เรียบร้อยแล้ว!")
+                    st.cache_data.clear()  # เคลียร์แคชเพื่อให้แสดงข้อมูลล่าสุดทันที
+                else:
+                    st.warning("⚠️ ส่งข้อมูลสำเร็จแล้ว แตลับหลังได้รับสถานะผิดปกติ กรุณาตรวจสอบ Google Apps Script")
+            except Exception as e:
+                st.error(f"❌ เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อบันทึกข้อมูล: {e}")
         else:
             st.error("⚠️ กรุณากรอกข้อมูลสำคัญให้ครบถ้วน (เลขใบงาน, ชื่อลูกค้า, รุ่นสินค้า และอาการเสีย)")
 
@@ -222,63 +244,25 @@ if st.session_state.active_menu == "บันทึกข้อมูล":
 # 📦 2. เมนูรับเข้าอะไหล่
 # =======================================================
 elif st.session_state.active_menu == "รับเข้าอะไหล่":
-    st.markdown("📦 **เมนูรับเข้าอะไหล่**")
-    
-    col_po, col_item = st.columns([1, 2])
-    with col_po:
-        st.markdown("📌 **1. ตั้งค่าหัวบิล PO**")
-        current_po_val = st.session_state.current_po if st.session_state.current_po else "THGDN"
-        po_input = st.text_input("เลขที่ PO (PO Number)", value=current_po_val, placeholder="THGDN...").strip()
-        po_date_input = st.date_input("วันที่รับสินค้าเข้า", value=datetime.now())
-        
-        c_btn1, c_btn2 = st.columns(2)
-        with c_btn1:
-            if st.button("✅ ล็อกบิล PO นี้", use_container_width=True, type="primary"):
-                st.session_state.current_po = po_input
-                st.session_state.current_po_date = po_date_input.strftime("%Y-%m-%d")
-                st.rerun()
-        with c_btn2:
-            if st.button("💾 บันทึกใบ PO", use_container_width=True):
-                st.success("บันทึกข้อมูลใบ PO เรียบร้อยแล้ว!")
-
-    with col_item:
-        st.markdown("✨ **2. เพิ่มรายการอะไหล่เข้าคลัง**")
-        with st.form(key="parts_multi_input_form", clear_on_submit=True):
-            p_form_r1_c1, p_form_r1_c2 = st.columns(2)
-            with p_form_r1_c1:
-                part_code = st.text_input("รหัสอะไหล่ (Part Code / SKU)", placeholder="ระบุรหัสหรือบาร์โค้ด").strip()
-            with p_form_r1_c2:
-                part_name = st.text_input("ชื่อรายการอะไหล่", placeholder="เช่น หน้าจอชุด, แบตเตอรี่").strip()
-                
-            p_form_r2_c1, p_form_r2_c2 = st.columns([3, 1])
-            with p_form_r2_c1:
-                st.markdown('<div class="brand-container">', unsafe_allow_html=True)
-                part_brand = st.radio("แบรนด์สินค้าที่รองรับ", ["Infinix", "Tecno", "Itel", "Common"], index=0, key="p_brand_radio")
-                st.markdown('</div>', unsafe_allow_html=True)
-            with p_form_r2_c2:
-                part_qty = st.number_input("จำนวนที่รับเข้า (ชิ้น)", min_value=1, step=1, value=1)
-                
-            part_submit = st.form_submit_button(label='➕ บันทึกชิ้นนี้เข้าบิล PO', use_container_width=True)
+    st.markdown("📦 **เมนูรับเข้าอะไหล่ (Stock Parts)**")
+    st.info("ℹ️ ฟังก์ชันรับเข้าอะไหล่สำหรับจัดการคลังสต็อก")
 
 # =======================================================
 # 🔍 3. เมนู ค้นหาและจัดการข้อมูลใบงาน
 # =======================================================
 elif st.session_state.active_menu == "จัดการใบงาน":
     st.markdown("🔍 **เมนูค้นหาและจัดการข้อมูลใบงาน**")
-    
     if not df_repairs.empty:
-        display_df = df_repairs.iloc[::-1].reset_index(drop=True)
         search_query = st.text_input("📋 พิมพ์ข้อมูลค้นหา", placeholder="พิมพ์เพื่อค้นหา Job No. หรือ ชื่อลูกค้า...").strip()
-        
+        display_df = df_repairs.iloc[::-1].reset_index(drop=True)
         if search_query:
             mask = False
             for col in display_df.columns:
                 mask = mask | display_df[col].astype(str).str.contains(search_query, case=False, na=False)
             display_df = display_df[mask]
-            
         st.dataframe(display_df, hide_index=True, use_container_width=True)
     else:
-        st.warning("ℹ️ กำลังโหลดข้อมูล หรือกรุณาเปิดสิทธิ์ชีตให้เป็น 'ทุกคนที่มีลิงก์อ่านได้' (Anyone with the link)")
+        st.info("ℹ️ ยังไม่มีข้อมูลในตาราง")
 
 # =======================================================
 # 📊 4. เมนู สถิติการซ่อม
@@ -287,9 +271,7 @@ elif st.session_state.active_menu == "สถิติการซ่อม":
     st.markdown("📊 **เมนู แสดงสถิติ การซ่อม**")
     if not df_repairs.empty:
         st.metric("📦 รายการซ่อมทั้งหมด", f"{len(df_repairs)} รายการ")
-        st.dataframe(df_repairs.iloc[::-1], hide_index=True, use_container_width=True)
-    else:
-        st.info("ℹ️ ยังไม่มีข้อมูลสำหรับแสดงสถิติ")
+        st.dataframe(df_repairs, hide_index=True, use_container_width=True)
 
 # =======================================================
 # 📥 5. เมนู Export Excel
@@ -306,8 +288,6 @@ elif st.session_state.active_menu == "ส่งออก Excel":
             file_name=f"Carlcare_Export_{datetime.now().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-    else:
-        st.info("ℹ️ ยังไม่มีข้อมูลสำหรับส่งออก")
 
 # =======================================================
 # 📄 6. เมนู Export PDF
@@ -315,21 +295,5 @@ elif st.session_state.active_menu == "ส่งออก Excel":
 elif st.session_state.active_menu == "ส่งออก PDF":
     st.markdown("📄 **เมนู Export to PDF**")
     if not df_repairs.empty:
-        st.dataframe(df_repairs.iloc[::-1], hide_index=True, height=450)
-        st.markdown("---")
-        print_js = """
-        <a href="javascript:window.print()" style="
-            text-decoration: none;
-            background-color: #0EA5E9;
-            color: white;
-            padding: 10px 24px;
-            font-weight: bold;
-            border-radius: 6px;
-            display: inline-block;
-        ">
-            🖨️ กดที่นี่เพื่อสั่งพิมพ์รายงาน (Print / Save to PDF)
-        </a>
-        """
-        st.markdown(print_js, unsafe_allow_html=True)
-    else:
-        st.info("ℹ️ ยังไม่มีข้อมูลสำหรับการจัดพิมพ์รายงาน PDF")
+        st.dataframe(df_repairs, hide_index=True, height=400)
+        st.markdown('<a href="javascript:window.print()" style="background-color:#0EA5E9;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;">🖨️ สั่งพิมพ์รายงาน (PDF)</a>', unsafe_allow_html=True)
