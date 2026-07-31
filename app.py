@@ -73,7 +73,7 @@ st.markdown("""
     .compact-header h3 { color: #0369A1 !important; margin: 0 !important; font-weight: 700; font-size: 1.25rem !important; }
     .compact-header p { color: #0EA5E9 !important; margin: 0 !important; font-weight: 600; font-size: 0.85rem; }
     
-    div[data-testid="stForm"], .list-filter-card {
+    div[data-testid="stForm"], .list-filter-card, .edit-box {
         background-color: #FFFFFF !important; border: 1px solid #E2E8F0 !important;
         border-radius: 10px !important; padding: 1.2rem 1.5rem !important; margin-bottom: 1rem !important;
     }
@@ -106,7 +106,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =======================================================
-# 2. ฟังก์ชันดึงข้อมูล Google Sheets (ใส่ Link ของคุณ)
+# 2. ฟังก์ชันดึงข้อมูล Google Sheets (URL ของคุณ)
 # =======================================================
 @st.cache_data(ttl=5)
 def load_data_from_gsheets():
@@ -128,7 +128,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Session State Initial
-if "active_menu" not in st.session_state: st.session_state.active_menu = "จัดการใบงาน"
+if "active_menu" not in st.session_state: st.session_state.active_menu = "บันทึกข้อมูล"
+if "current_po" not in st.session_state: st.session_state.current_po = "THGDN"
+if "current_po_date" not in st.session_state: st.session_state.current_po_date = datetime.now().strftime("%Y-%m-%d")
 
 # Sidebar Menu
 with st.sidebar:
@@ -169,43 +171,94 @@ with st.sidebar:
 df_repairs = load_data_from_gsheets()
 
 # =======================================================
-# 📝 1. เมนู บันทึกข้อมูลเครื่องซ่อมเสร็จ
+# 💻 1. เมนูบันทึกข้อมูลเครื่องซ่อมเสร็จ (ปรับ UI ตามรูปแบบที่คุณต้องการ)
 # =======================================================
 if st.session_state.active_menu == "บันทึกข้อมูล":
-    st.markdown("📝 **บันทึกข้อมูลเครื่องซ่อมเสร็จ**")
-    with st.form("repair_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            job_no = st.text_input("เลขที่ใบรับซ่อม (Job No.)")
-            customer_name = st.text_input("ชื่อลูกค้า")
-            brand = st.selectbox("ยี่ห้อ", ["Infinix", "Tecno", "Itel", "อื่นๆ"])
-        with col2:
-            model = st.text_input("รุ่น (Model)")
-            serial_no = st.text_input("Serial Number / IMEI")
-            status = st.selectbox("สถานะการซ่อม", ["ซ่อมเสร็จแล้ว", "รออะไหล่", "กำลังดำเนินการ", "ยกเลิกการซ่อม"])
+    st.markdown("📝 **เมนูบันทึกข้อมูลเครื่องซ่อมเสร็จ (เพิ่มข้อมูลใบงานใหม่)**")
+    
+    with st.form(key="repair_input_form", clear_on_submit=True):
+        form_r1_c1, form_r1_c2 = st.columns([4, 2])
+        with form_r1_c1:
+            job_no = st.text_input("เลขที่ใบงาน (Job No.)", placeholder="ระบุเลขใบงาน", key="form_job_no").strip()
+        with form_r1_c2:
+            repair_date = st.date_input("วันที่รับซ่อม", value=datetime.now(), key="form_repair_date")
+            repair_date_str = repair_date.strftime("%Y-%m-%d")
+
+        form_r2_c1, form_r2_c2 = st.columns(2)
+        with form_r2_c1:
+            customer_name = st.text_input("ชื่อลูกค้า", placeholder="ชื่อ-นามสกุลลูกค้า", key="form_customer_name")
+        with form_r2_c2:
+            phone_number = st.text_input("เบอร์โทรศัพท์", placeholder="เบอร์โทรติดต่อ", key="form_phone_number")
+
+        form_r3_c1, form_r3_c2 = st.columns(2)
+        with form_r3_c1:
+            st.markdown('<div class="brand-container">', unsafe_allow_html=True)
+            brand = st.radio("แบรนด์สินค้า", ["Infinix", "Tecno", "Itel"], index=0, key="form_brand")
+            st.markdown('</div>', unsafe_allow_html=True)
+        with form_r3_c2:
+            model = st.text_input("รุ่น/โมเดล", placeholder="เช่น Hot 40 Pro", key="form_model")
+
+        form_r4_c1, form_r4_c2 = st.columns(2)
+        with form_r4_c1:
+            issue = st.text_input("อาการเสีย", placeholder="อาการเสียที่แจ้งซ่อม", key="form_issue")
+        with form_r4_c2:
+            parts_used = st.text_input("อะไหล่ที่ใช้", placeholder="รายการอะไหล่ที่เปลี่ยน", key="form_parts_used")
         
-        details = st.text_area("รายละเอียดอาการ/การแก้ไข")
-        submitted = st.form_submit_button("💾 บันทึกข้อมูล")
-        if submitted:
-            st.success("✅ บันทึกข้อมูลเรียบร้อยแล้ว (ตัวอย่างการทำงาน)")
+        st.markdown('<div class="status-container">', unsafe_allow_html=True)
+        status_selected = st.radio("status_selected", ["🟢 รับเครื่องแล้ว/รอตรวจเช็ค", "🟡 กำลังดำเนินการซ่อม", "🔵 ซ่อมเสร็จสิ้น/รอส่งมอบลูกค้า", "🔴 ยกเลิกการซ่อม/คืนเครื่อง"], index=0, label_visibility="collapsed", key="form_status")
+        st.markdown('</div>', unsafe_allow_html=True)
+        clean_status = status_selected.split(" ", 1)[1]
+
+        st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
+        submit_button = st.form_submit_button(label='💾 บันทึกข้อมูลงานซ่อม', use_container_width=True)
+
+    if submit_button:
+        if job_no and customer_name and model and issue:
+            st.success("🎉 บันทึกข้อมูลใบงานใหม่สำเร็จเรียบร้อยแล้ว!")
+        else:
+            st.error("⚠️ กรุณากรอกข้อมูลสำคัญให้ครบถ้วน (เลขใบงาน, ชื่อลูกค้า, รุ่นสินค้า และอาการเสีย)")
 
 # =======================================================
-# 📦 2. เมนู รับเข้าอะไหล่ (Stock Parts)
+# 📦 2. เมนูรับเข้าอะไหล่
 # =======================================================
 elif st.session_state.active_menu == "รับเข้าอะไหล่":
-    st.markdown("📦 **ระบบจัดการสต็อกและรับเข้าอะไหล่**")
-    with st.form("stock_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            part_no = st.text_input("รหัสอะไหล่ (Part No.)")
-            part_name = st.text_input("ชื่อรายการอะไหล่")
-        with col2:
-            qty = st.number_input("จำนวนที่รับเข้า", min_value=1, value=1)
-            unit_price = st.number_input("ราคาต่อหน่วย (บาท)", min_value=0.0, value=0.0)
-            
-        submitted_stock = st.form_submit_button("📦 บันทึกรับเข้าอะไหล่")
-        if submitted_stock:
-            st.success("✅ บันทึกรับเข้าอะไหล่เรียบร้อยแล้ว")
+    st.markdown("📦 **เมนูรับเข้าอะไหล่**")
+    
+    col_po, col_item = st.columns([1, 2])
+    with col_po:
+        st.markdown("📌 **1. ตั้งค่าหัวบิล PO**")
+        current_po_val = st.session_state.current_po if st.session_state.current_po else "THGDN"
+        po_input = st.text_input("เลขที่ PO (PO Number)", value=current_po_val, placeholder="THGDN...").strip()
+        po_date_input = st.date_input("วันที่รับสินค้าเข้า", value=datetime.now())
+        
+        c_btn1, c_btn2 = st.columns(2)
+        with c_btn1:
+            if st.button("✅ ล็อกบิล PO นี้", use_container_width=True, type="primary"):
+                st.session_state.current_po = po_input
+                st.session_state.current_po_date = po_date_input.strftime("%Y-%m-%d")
+                st.rerun()
+        with c_btn2:
+            if st.button("💾 บันทึกใบ PO", use_container_width=True):
+                st.success("บันทึกข้อมูลใบ PO เรียบร้อยแล้ว!")
+
+    with col_item:
+        st.markdown("✨ **2. เพิ่มรายการอะไหล่เข้าคลัง**")
+        with st.form(key="parts_multi_input_form", clear_on_submit=True):
+            p_form_r1_c1, p_form_r1_c2 = st.columns(2)
+            with p_form_r1_c1:
+                part_code = st.text_input("รหัสอะไหล่ (Part Code / SKU)", placeholder="ระบุรหัสหรือบาร์โค้ด").strip()
+            with p_form_r1_c2:
+                part_name = st.text_input("ชื่อรายการอะไหล่", placeholder="เช่น หน้าจอชุด, แบตเตอรี่").strip()
+                
+            p_form_r2_c1, p_form_r2_c2 = st.columns([3, 1])
+            with p_form_r2_c1:
+                st.markdown('<div class="brand-container">', unsafe_allow_html=True)
+                part_brand = st.radio("แบรนด์สินค้าที่รองรับ", ["Infinix", "Tecno", "Itel", "Common"], index=0, key="p_brand_radio")
+                st.markdown('</div>', unsafe_allow_html=True)
+            with p_form_r2_c2:
+                part_qty = st.number_input("จำนวนที่รับเข้า (ชิ้น)", min_value=1, step=1, value=1)
+                
+            part_submit = st.form_submit_button(label='➕ บันทึกชิ้นนี้เข้าบิล PO', use_container_width=True)
 
 # =======================================================
 # 🔍 3. เมนู ค้นหาและจัดการข้อมูลใบงาน
@@ -223,11 +276,7 @@ elif st.session_state.active_menu == "จัดการใบงาน":
                 mask = mask | display_df[col].astype(str).str.contains(search_query, case=False, na=False)
             display_df = display_df[mask]
             
-        st.dataframe(
-            display_df,
-            hide_index=True,
-            use_container_width=True
-        )
+        st.dataframe(display_df, hide_index=True, use_container_width=True)
     else:
         st.warning("ℹ️ กำลังโหลดข้อมูล หรือกรุณาเปิดสิทธิ์ชีตให้เป็น 'ทุกคนที่มีลิงก์อ่านได้' (Anyone with the link)")
 
