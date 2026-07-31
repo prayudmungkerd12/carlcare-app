@@ -1,4 +1,5 @@
 import io
+import time
 from datetime import datetime
 import pandas as pd
 import requests
@@ -10,7 +11,7 @@ import streamlit as st
 # 1. URL สำหรับดึงข้อมูลอ่านสด
 SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1laqAl0kHMP19qJCqhzAq6Ll7MkpDAQxH3k-xEvG0bj8/export?format=csv&gid=0"
 
-# 2. URL สำหรับรับค่าบันทึกข้อมูล (เปลี่ยนเป็น URL Webhook หรือ Google Form ของคุณ)
+# 2. URL สำหรับรับค่าบันทึกข้อมูล (นำ Web App URL จาก Google Apps Script มาใส่ตรงนี้)
 SAVE_WEBHOOK_URL = "https://script.google.com/macros/s/YOUR_APPS_SCRIPT_ID/exec"
 
 # =======================================================
@@ -107,12 +108,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =======================================================
-# 2. ฟังก์ชันดึงข้อมูลจาก Google Sheets
+# 2. ฟังก์ชันดึงข้อมูลจาก Google Sheets (ป้องกัน Cache)
 # =======================================================
-@st.cache_data(ttl=3)
+@st.cache_data(ttl=1)  # ตั้งเวลา Cache เพียง 1 วินาที
 def load_data_from_gsheets():
     try:
-        df = pd.read_csv(SHEET_CSV_URL)
+        # ป้องกัน Google ค้าง Cache เก่าด้วยการต่อพารามิเตอร์เวลาปัจจุบัน
+        cache_buster_url = f"{SHEET_CSV_URL}&nocache={int(time.time())}"
+        df = pd.read_csv(cache_buster_url)
         if not df.empty:
             return df
     except Exception as e:
@@ -211,7 +214,7 @@ if st.session_state.active_menu == "บันทึกข้อมูล":
         st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
         submit_button = st.form_submit_button(label='💾 บันทึกข้อมูลงานซ่อม', use_container_width=True)
 
-    # 📌 ส่วนประมวลผลการส่งข้อมูลบันทึก
+    # 📌 บันทึกข้อมูลเข้า Google Sheets ผ่าน Webhook
     if submit_button:
         if job_no and customer_name and model and issue:
             data_payload = {
@@ -227,16 +230,17 @@ if st.session_state.active_menu == "บันทึกข้อมูล":
             }
             
             try:
-                # ส่งข้อมูลผ่าน Webhook/Apps Script
                 response = requests.post(SAVE_WEBHOOK_URL, json=data_payload, timeout=10)
                 
                 if response.status_code == 200:
-                    st.success("🎉 บันทึกข้อมูลลง Google Sheets เรียบร้อยแล้ว!")
-                    st.cache_data.clear()  # เคลียร์แคชเพื่อให้แสดงข้อมูลล่าสุดทันที
+                    st.success("🎉 บันทึกข้อมูลลง Google Sheets สำเร็จเรียบร้อย!")
+                    st.cache_data.clear()  # ล้าง Cache การดึงข้อมูล
+                    time.sleep(1.5)        # รอให้เซิร์ฟเวอร์ Google อัปเดตไฟล์สักครู่
+                    st.rerun()             # โหลดหน้าจอใหม่ทันที
                 else:
-                    st.warning("⚠️ ส่งข้อมูลสำเร็จแล้ว แตลับหลังได้รับสถานะผิดปกติ กรุณาตรวจสอบ Google Apps Script")
+                    st.error("⚠️ ไม่สามารถส่งข้อมูลไปยัง Google Apps Script ได้")
             except Exception as e:
-                st.error(f"❌ เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อบันทึกข้อมูล: {e}")
+                st.error(f"❌ เกิดข้อผิดพลาดในการส่งข้อมูล: {e}")
         else:
             st.error("⚠️ กรุณากรอกข้อมูลสำคัญให้ครบถ้วน (เลขใบงาน, ชื่อลูกค้า, รุ่นสินค้า และอาการเสีย)")
 
@@ -252,17 +256,29 @@ elif st.session_state.active_menu == "รับเข้าอะไหล่":
 # =======================================================
 elif st.session_state.active_menu == "จัดการใบงาน":
     st.markdown("🔍 **เมนูค้นหาและจัดการข้อมูลใบงาน**")
+    
+    # ปุ่มรีเฟรชข้อมูลแบบ Manual เผื่อกรณีอยากอัปเดตแบบเรียลไทม์
+    col_search, col_ref = st.columns([5, 1])
+    with col_ref:
+        if st.button("🔄 ดึงข้อมูลล่าสุด", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
     if not df_repairs.empty:
-        search_query = st.text_input("📋 พิมพ์ข้อมูลค้นหา", placeholder="พิมพ์เพื่อค้นหา Job No. หรือ ชื่อลูกค้า...").strip()
-        display_df = df_repairs.iloc[::-1].reset_index(drop=True)
+        display_df = df_repairs.iloc[::-1].reset_index(drop=True)  # เอาข้อมูลล่าสุดขึ้นข้างบน
+        
+        with col_search:
+            search_query = st.text_input("📋 พิมพ์ข้อมูลค้นหา", placeholder="พิมพ์ค้นหา Job No., ชื่อลูกค้า, เบอร์โทร, หรือรุ่น...").strip()
+        
         if search_query:
             mask = False
             for col in display_df.columns:
                 mask = mask | display_df[col].astype(str).str.contains(search_query, case=False, na=False)
             display_df = display_df[mask]
+            
         st.dataframe(display_df, hide_index=True, use_container_width=True)
     else:
-        st.info("ℹ️ ยังไม่มีข้อมูลในตาราง")
+        st.warning("ℹ️ ยังไม่พบข้อมูลในตาราง หรือกำลังโหลดข้อมูลจาก Google Sheets...")
 
 # =======================================================
 # 📊 4. เมนู สถิติการซ่อม
@@ -271,7 +287,9 @@ elif st.session_state.active_menu == "สถิติการซ่อม":
     st.markdown("📊 **เมนู แสดงสถิติ การซ่อม**")
     if not df_repairs.empty:
         st.metric("📦 รายการซ่อมทั้งหมด", f"{len(df_repairs)} รายการ")
-        st.dataframe(df_repairs, hide_index=True, use_container_width=True)
+        st.dataframe(df_repairs.iloc[::-1], hide_index=True, use_container_width=True)
+    else:
+        st.info("ℹ️ ยังไม่มีข้อมูลสำหรับแสดงสถิติ")
 
 # =======================================================
 # 📥 5. เมนู Export Excel
@@ -288,6 +306,8 @@ elif st.session_state.active_menu == "ส่งออก Excel":
             file_name=f"Carlcare_Export_{datetime.now().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+    else:
+        st.info("ℹ️ ยังไม่มีข้อมูลสำหรับส่งออก")
 
 # =======================================================
 # 📄 6. เมนู Export PDF
@@ -295,5 +315,7 @@ elif st.session_state.active_menu == "ส่งออก Excel":
 elif st.session_state.active_menu == "ส่งออก PDF":
     st.markdown("📄 **เมนู Export to PDF**")
     if not df_repairs.empty:
-        st.dataframe(df_repairs, hide_index=True, height=400)
+        st.dataframe(df_repairs.iloc[::-1], hide_index=True, height=400)
         st.markdown('<a href="javascript:window.print()" style="background-color:#0EA5E9;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;">🖨️ สั่งพิมพ์รายงาน (PDF)</a>', unsafe_allow_html=True)
+    else:
+        st.info("ℹ️ ยังไม่มีข้อมูลสำหรับการจัดพิมพ์รายงาน PDF")
