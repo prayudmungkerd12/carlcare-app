@@ -8,11 +8,11 @@ import streamlit as st
 # =======================================================
 # 📌 ตั้งค่า Google Sheets & Webhook สำหรับบันทึกข้อมูล
 # =======================================================
-# 1. URL สำหรับดึงข้อมูลอ่านสด
+# 1. URL สำหรับดึงข้อมูลอ่านสด (CSV Export)
 SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1laqAl0kHMP19qJCqhzAq6Ll7MkpDAQxH3k-xEvG0bj8/export?format=csv&gid=0"
 
-# 2. URL สำหรับรับค่าบันทึกข้อมูล (นำ Web App URL จาก Google Apps Script มาใส่ตรงนี้)
-SAVE_WEBHOOK_URL = "https://script.google.com/macros/s/YOUR_APPS_SCRIPT_ID/exec"
+# 2. 🔴 นำ Web App URL ที่ได้จาก Google Apps Script มาวางแทนที่ตรงนี้
+SAVE_WEBHOOK_URL = "YOUR_WEB_APP_URL_HERE"
 
 # =======================================================
 # 1. การตั้งค่าหน้าจอและ CSS สไตล์
@@ -108,12 +108,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =======================================================
-# 2. ฟังก์ชันดึงข้อมูลจาก Google Sheets (ป้องกัน Cache)
+# 2. ฟังก์ชันดึงข้อมูลจาก Google Sheets (ป้องกัน Cache ค้าง)
 # =======================================================
-@st.cache_data(ttl=1)  # ตั้งเวลา Cache เพียง 1 วินาที
+@st.cache_data(ttl=1)
 def load_data_from_gsheets():
     try:
-        # ป้องกัน Google ค้าง Cache เก่าด้วยการต่อพารามิเตอร์เวลาปัจจุบัน
+        # เติม Timestamp ป้องกัน Google ส่งข้อมูลชุดเก่าคืนมา
         cache_buster_url = f"{SHEET_CSV_URL}&nocache={int(time.time())}"
         df = pd.read_csv(cache_buster_url)
         if not df.empty:
@@ -214,9 +214,11 @@ if st.session_state.active_menu == "บันทึกข้อมูล":
         st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
         submit_button = st.form_submit_button(label='💾 บันทึกข้อมูลงานซ่อม', use_container_width=True)
 
-    # 📌 บันทึกข้อมูลเข้า Google Sheets ผ่าน Webhook
+    # 📌 ส่วนส่งข้อมูลไปยัง Webhook
     if submit_button:
-        if job_no and customer_name and model and issue:
+        if "YOUR_WEB_APP_URL_HERE" in SAVE_WEBHOOK_URL:
+            st.error("⚠️ กรุณานำ Web App URL จาก Google Apps Script มาใส่ในไฟล์ app.py บรรทัดที่ 16 ก่อนครับ")
+        elif job_no and customer_name and model and issue:
             data_payload = {
                 "job_no": job_no,
                 "repair_date": repair_date_str,
@@ -230,15 +232,15 @@ if st.session_state.active_menu == "บันทึกข้อมูล":
             }
             
             try:
-                response = requests.post(SAVE_WEBHOOK_URL, json=data_payload, timeout=10)
+                response = requests.post(SAVE_WEBHOOK_URL, json=data_payload, timeout=15, allow_redirects=True)
                 
                 if response.status_code == 200:
                     st.success("🎉 บันทึกข้อมูลลง Google Sheets สำเร็จเรียบร้อย!")
-                    st.cache_data.clear()  # ล้าง Cache การดึงข้อมูล
-                    time.sleep(1.5)        # รอให้เซิร์ฟเวอร์ Google อัปเดตไฟล์สักครู่
-                    st.rerun()             # โหลดหน้าจอใหม่ทันที
+                    st.cache_data.clear()  # ล้างแคชเพื่อให้ดึงตารางใหม่
+                    time.sleep(1.5)        # หน่วงเวลา 1.5 วินาทีให้ Google ประมวลผล
+                    st.rerun()             # รีเฟรชหน้าจอ
                 else:
-                    st.error("⚠️ ไม่สามารถส่งข้อมูลไปยัง Google Apps Script ได้")
+                    st.error(f"⚠️ เกิดปัญหาขณะบันทึกข้อมูล (Status Code: {response.status_code})")
             except Exception as e:
                 st.error(f"❌ เกิดข้อผิดพลาดในการส่งข้อมูล: {e}")
         else:
@@ -257,7 +259,6 @@ elif st.session_state.active_menu == "รับเข้าอะไหล่":
 elif st.session_state.active_menu == "จัดการใบงาน":
     st.markdown("🔍 **เมนูค้นหาและจัดการข้อมูลใบงาน**")
     
-    # ปุ่มรีเฟรชข้อมูลแบบ Manual เผื่อกรณีอยากอัปเดตแบบเรียลไทม์
     col_search, col_ref = st.columns([5, 1])
     with col_ref:
         if st.button("🔄 ดึงข้อมูลล่าสุด", use_container_width=True):
@@ -265,7 +266,7 @@ elif st.session_state.active_menu == "จัดการใบงาน":
             st.rerun()
 
     if not df_repairs.empty:
-        display_df = df_repairs.iloc[::-1].reset_index(drop=True)  # เอาข้อมูลล่าสุดขึ้นข้างบน
+        display_df = df_repairs.iloc[::-1].reset_index(drop=True)
         
         with col_search:
             search_query = st.text_input("📋 พิมพ์ข้อมูลค้นหา", placeholder="พิมพ์ค้นหา Job No., ชื่อลูกค้า, เบอร์โทร, หรือรุ่น...").strip()
@@ -288,8 +289,6 @@ elif st.session_state.active_menu == "สถิติการซ่อม":
     if not df_repairs.empty:
         st.metric("📦 รายการซ่อมทั้งหมด", f"{len(df_repairs)} รายการ")
         st.dataframe(df_repairs.iloc[::-1], hide_index=True, use_container_width=True)
-    else:
-        st.info("ℹ️ ยังไม่มีข้อมูลสำหรับแสดงสถิติ")
 
 # =======================================================
 # 📥 5. เมนู Export Excel
@@ -306,8 +305,6 @@ elif st.session_state.active_menu == "ส่งออก Excel":
             file_name=f"Carlcare_Export_{datetime.now().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-    else:
-        st.info("ℹ️ ยังไม่มีข้อมูลสำหรับส่งออก")
 
 # =======================================================
 # 📄 6. เมนู Export PDF
@@ -317,5 +314,3 @@ elif st.session_state.active_menu == "ส่งออก PDF":
     if not df_repairs.empty:
         st.dataframe(df_repairs.iloc[::-1], hide_index=True, height=400)
         st.markdown('<a href="javascript:window.print()" style="background-color:#0EA5E9;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;">🖨️ สั่งพิมพ์รายงาน (PDF)</a>', unsafe_allow_html=True)
-    else:
-        st.info("ℹ️ ยังไม่มีข้อมูลสำหรับการจัดพิมพ์รายงาน PDF")
