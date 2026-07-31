@@ -106,12 +106,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =======================================================
-# 2. ฟังก์ชันดึงข้อมูล Google Sheets (ปลอดภัย 100%)
+# 2. ฟังก์ชันดึงข้อมูล Google Sheets (ใส่ Link ของคุณให้แล้ว)
 # =======================================================
 @st.cache_data(ttl=5)
 def load_data_from_gsheets():
-    # ⚠️ วาง URL CSV ของ Google Sheets คุณตรงนี้ ⚠️
-    sheet_url = "https://docs.google.com/spreadsheets/d/1laqAl0kHMP19qJCqhzAq6Ll7MkpDAQxH3k-xEvG0bj8/edit?gid=0#gid=0"
+    # URL แปลงเป็น CSV อัตโนมัติจาก Link ที่ส่งมา
+    sheet_url = "https://docs.google.com/spreadsheets/d/1laqAl0kHMP19qJCqhzAq6Ll7MkpDAQxH3k-xEvG0bj8/export?format=csv&gid=0"
     
     try:
         df = pd.read_csv(sheet_url)
@@ -120,7 +120,6 @@ def load_data_from_gsheets():
     except Exception as e:
         st.warning(f"⚠️ ไม่สามารถเชื่อมต่อ Google Sheets ได้ชั่วคราว: {e}")
     
-    # หากดึงไม่ได้จริงๆ ให้สร้าง DataFrame เปล่าที่มีโครงสร้างเพื่อกันระบบพัง
     return pd.DataFrame()
 
 # Header หน้าตาหลัก
@@ -173,13 +172,13 @@ with st.sidebar:
 df_repairs = load_data_from_gsheets()
 
 # =======================================================
-# 🔍 1. เมนูค้นหาและจัดการข้อมูลใบงาน (การแสดงผลปลอดภัย 100%)
+# 🔍 1. เมนูค้นหาและจัดการข้อมูลใบงาน
 # =======================================================
 if st.session_state.active_menu == "จัดการใบงาน":
     st.markdown("🔍 **เมนูค้นหาและจัดการข้อมูลใบงาน**")
     
     if not df_repairs.empty:
-        # 📌 เรียงลำดับเอาข้อมูลล่าสุดขึ้นก่อนแบบการันตีไม่พัง
+        # 📌 สลับเอาแถวล่างสุด (รายการล่าสุด) ขึ้นมาก่อน
         display_df = df_repairs.iloc[::-1].reset_index(drop=True)
         
         search_query = st.text_input("📋 พิมพ์ข้อมูลค้นหา", placeholder="พิมพ์เพื่อค้นหา Job No. หรือ ชื่อลูกค้า...").strip()
@@ -196,7 +195,7 @@ if st.session_state.active_menu == "จัดการใบงาน":
             use_container_width=True
         )
     else:
-        st.error("⚠️ ไม่พบข้อมูลในระบบ หรือยังไม่ได้วาง Link Google Sheets CSV ในโค้ด (บรรทัดที่ 113)")
+        st.warning("ℹ️ กำลังโหลดข้อมูล หรือกรุณาเปิดสิทธิ์ชีตให้เป็น 'ทุกคนที่มีลิงก์อ่านได้' (Anyone with the link)")
 
 # =======================================================
 # 📊 2. เมนู สถิติการซ่อม
