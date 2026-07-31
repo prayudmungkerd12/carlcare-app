@@ -2,17 +2,63 @@ import pandas as pd
 import streamlit as st
 
 # ==========================================
-# 1. การตั้งค่าหน้าเว็บแบบเดิม
+# 1. Page Config & CSS Style ดั้งเดิม
 # ==========================================
 st.set_page_config(
     page_title="ศูนย์ซ่อม Carlcare ITcity",
     page_icon="🛠️",
     layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# แต่ง CSS กลับมาเป็นสไตล์เดิม
+st.markdown(
+    """
+    <style>
+    /* ซ่อน Header / Footer ของ Streamlit */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    
+    /* กล่อง Banner หัวข้อหลัก */
+    .banner-box {
+        background-color: #EBF3FE;
+        padding: 18px 25px;
+        border-radius: 10px;
+        border-left: 5px solid #1E88E5;
+        margin-bottom: 25px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .banner-title {
+        color: #1E293B;
+        font-size: 22px;
+        font-weight: bold;
+        margin: 0;
+    }
+    .banner-subtitle {
+        color: #1E88E5;
+        font-size: 14px;
+        font-weight: 500;
+        margin: 0;
+    }
+    
+    /* กล่องสถานะการเชื่อมต่อมุมซ้ายล่าง */
+    .status-card {
+        background-color: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+        padding: 12px;
+        margin-top: 20px;
+    }
+    </style>
+""",
+    unsafe_allow_html=True,
 )
 
 
 # ==========================================
-# 2. ฟังก์ชันดึงข้อมูลแบบ Fast CSV (อ่านตรง ไม่หมุนค้าง)
+# 2. ฟังก์ชันดึงข้อมูลจาก Google Sheets (Fast Load)
 # ==========================================
 def get_csv_url(sheet_name):
     try:
@@ -39,10 +85,9 @@ def load_data(sheet_name):
 
 
 # ==========================================
-# 3. เมนูด้านข้าง (Sidebar) หน้าตาและข้อความเดิมเป๊ะๆ
+# 3. Sidebar (เมนูด้านซ้าย แบบดั้งเดิมเป๊ะ)
 # ==========================================
-st.sidebar.title("เมนูระบบจัดการ")
-st.sidebar.markdown("<br>", unsafe_allow_html=True)
+st.sidebar.markdown("### เมนูระบบจัดการ")
 
 menu = st.sidebar.radio(
     "",
@@ -54,44 +99,51 @@ menu = st.sidebar.radio(
         "📥 ส่งออกข้อมูล Export to Excel",
         "📑 พิมพ์รายงาน Export to PDF",
     ],
-    index=2,  # ให้เลือกเมนูค้นหาและจัดการข้อมูลใบงานเป็นหน้าแรกตามเดิม
+    index=2,  # เลือกหน้า ค้นหาและจัดการข้อมูลใบงาน เป็นค่าเริ่มต้น
 )
 
+# แสดงสถานะการเชื่อมต่อมุมซ้ายล่างแบบดั้งเดิม
 st.sidebar.markdown("<br><br>", unsafe_allow_html=True)
-
-# กล่องสถานะการเชื่อมต่อเดิมที่มุมซ้ายล่าง
-st.sidebar.info(
-    "🟢 **เชื่อมต่อ Google Sheets แล้ว**\n\nข้อมูลถูกจัดเก็บแบบเรียลไทม์ ปลอดภัยบนระบบ Cloud"
+st.sidebar.markdown(
+    """
+    <div class="status-card">
+        <span style="color: #10B981;">🟢 <b>เชื่อมต่อ Google Sheets แล้ว</b></span><br>
+        <small style="color: #64748B;">ข้อมูลถูกจัดเก็บแบบเรียลไทม์ ปลอดภัยบนระบบ Cloud</small>
+    </div>
+""",
+    unsafe_allow_html=True,
 )
 
 
 # ==========================================
-# 4. ส่วนแสดงผลเนื้อหา (หน้าตา หัวข้อ รูปแบบเดิมเป๊ะ)
+# 4. ส่วนแสดงผลตามหน้าเมนู
 # ==========================================
 
 # ------------------------------------------
-# เมนู 3: ค้นหาและจัดการข้อมูลใบงาน (หน้าหลักเดิม)
+# เมนู: 🔍 ค้นหาและจัดการข้อมูลใบงาน
 # ------------------------------------------
 if menu == "🔍 ค้นหาและจัดการข้อมูลใบงาน":
-    # Banner หัวข้อสไตล์เดิม
-    st.info(
-        "🛠️ **ศูนย์ซ่อม Carlcare ITcity** "
-        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
-        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
-        "<span style='color: #1E88E5;'>Infinix • Tecno • Itel Management System</span>",
-        icon=None,
+    # Banner หัวข้อสไตล์ดั้งเดิม
+    st.markdown(
+        """
+        <div class="banner-box">
+            <div class="banner-title">🛠️ ศูนย์ซ่อม Carlcare ITcity</div>
+            <div class="banner-subtitle">Infinix • Tecno • Itel Management System</div>
+        </div>
+    """,
+        unsafe_allow_html=True,
     )
 
-    st.markdown("### 🔍 เมนูค้นหาและจัดการข้อมูลใบงาน")
-
-    df_repairs = load_data("repairs")
-
+    st.markdown("#### 🔍 เมนูค้นหาและจัดการข้อมูลใบงาน")
     st.markdown("##### 📋 พิมพ์ข้อมูลค้นหา")
+
     search_kw = st.text_input(
         "",
         placeholder="พิมพ์เพื่อค้นหา Job No. หรือ ชื่อลูกค้า...",
         label_visibility="collapsed",
     )
+
+    df_repairs = load_data("repairs")
 
     if not df_repairs.empty:
         if search_kw:
@@ -128,7 +180,7 @@ if menu == "🔍 ค้นหาและจัดการข้อมูลใ
         st.info("ℹ️ ยังไม่มีรายการใบงานเก็บรักษาในระบบ")
 
 # ------------------------------------------
-# เมนู 1: บันทึกข้อมูลเครื่องซ่อมเสร็จ
+# เมนู: 📝 บันทึกข้อมูลเครื่องซ่อมเสร็จ
 # ------------------------------------------
 elif menu == "📝 บันทึกข้อมูลเครื่องซ่อมเสร็จ":
     st.markdown("### 📝 บันทึกข้อมูลเครื่องซ่อมเสร็จ")
@@ -156,7 +208,7 @@ elif menu == "📝 บันทึกข้อมูลเครื่องซ�
         submit = st.form_submit_button("บันทึกข้อมูลงานซ่อม")
 
 # ------------------------------------------
-# เมนู 2: รับเข้าอะไหล่ (Stock Parts)
+# เมนู: 📦 รับเข้าอะไหล่ (Stock Parts)
 # ------------------------------------------
 elif menu == "📦 รับเข้าอะไหล่ (Stock Parts)":
     st.markdown("### 📦 รับเข้าอะไหล่ (Stock Parts)")
@@ -167,7 +219,7 @@ elif menu == "📦 รับเข้าอะไหล่ (Stock Parts)":
         st.info("ℹ️ ยังไม่มีรายการอะไหล่ในระบบ")
 
 # ------------------------------------------
-# เมนู 4: รายงานสถิติกระบวนการซ่อม
+# เมนู: 📊 รายงานสถิติกระบวนการซ่อม
 # ------------------------------------------
 elif menu == "📊 รายงานสถิติกระบวนการซ่อม":
     st.markdown("### 📊 รายงานสถิติกระบวนการซ่อม")
@@ -177,7 +229,7 @@ elif menu == "📊 รายงานสถิติกระบวนการ�
         st.dataframe(df_repairs, use_container_width=True, hide_index=True)
 
 # ------------------------------------------
-# เมนู 5: ส่งออกข้อมูล Export to Excel
+# เมนู: 📥 ส่งออกข้อมูล Export to Excel
 # ------------------------------------------
 elif menu == "📥 ส่งออกข้อมูล Export to Excel":
     st.markdown("### 📥 ส่งออกข้อมูล Export to Excel")
@@ -192,7 +244,7 @@ elif menu == "📥 ส่งออกข้อมูล Export to Excel":
         )
 
 # ------------------------------------------
-# เมนู 6: พิมพ์รายงาน Export to PDF
+# เมนู: 📑 พิมพ์รายงาน Export to PDF
 # ------------------------------------------
 elif menu == "📑 พิมพ์รายงาน Export to PDF":
     st.markdown("### 📑 พิมพ์รายงาน Export to PDF")
